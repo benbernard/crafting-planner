@@ -1,3 +1,5 @@
-foo
-bar
-baz
+foo|Hello There
+foo|I'm Ben
+1|foo
+2|bar
+3|baz

@@ -27,19 +27,18 @@ async function main() {
   console.log(db.data, "\n");
 
   while (true) {
-    let answer = await ask(outdent`
-      Actions:
-        a - add item
-        e - edit item
+    let answer = fzfChoice(
+      [
+        { type: "a", label: "Add Item" },
+        { type: "e", label: "Edit Item" },
+        { type: "l", label: "Lookup Item" },
+        { type: "p", label: "Print Database" },
+      ],
+      {
+        prompt: "Pick Action >",
+      }
+    ).type;
 
-      Info:
-        p - print data
-        l - lookup item
-
-      q - quit
-
-      What do you want to do:
-    `);
     if (answer === "q") break;
     if (answer in DISPATCH) {
       await DISPATCH[answer](db);
@@ -58,6 +57,58 @@ const DISPATCH = {
   p: printData,
   l: lookupItem,
 };
+
+function fzfChoice(
+  choices,
+  { nameFn = d => d.label, header = "", prompt = "" } = {}
+) {
+  let input = [];
+  let args = ["--with-nth", 2, "--delimiter", "';'", "--info", "hidden"];
+
+  if (header) {
+    let headerWidth = header
+      .split("\n")
+      .reduce((acc, line) => Math.max(acc, line.length), 0);
+
+    let headerLines = header
+      .split("\n")
+      .map(line => `header;${line}`)
+      .concat(["", `;${"–".repeat(headerWidth)}`, ""]);
+
+    input = input.concat(headerLines);
+    args.push("--header-lines", headerLines.length);
+    console.log(json(input));
+  }
+
+  if (prompt) {
+    args.push("--prompt", `'${prompt} '`);
+  }
+
+  let fzfLines = choices.map((d, i) => `${i};${nameFn(d)}`);
+  input = input.concat(fzfLines);
+
+  fs.writeFileSync(FZF_FILE, input.join("\n"));
+
+  rl.pause();
+
+  const info = spawnSync(
+    `cat ${FZF_FILE} | fzf ${args.join(" ")} > ${FZF_OUT_FILE}`,
+    [],
+    {
+      shell: true,
+      stdio: "inherit",
+    }
+  );
+
+  rl.resume();
+
+  if (info.error) {
+    return;
+  }
+
+  let output = fs.readFileSync(FZF_OUT_FILE).toString().trim().split(";")[0];
+  return choices[parseInt(output)];
+}
 
 async function editItem(db) {
   let item = await matchItem(db);
@@ -187,32 +238,24 @@ async function createIngredients(db, sourceName) {
   }
 }
 
-async function matchItem(db) {
-  db.writeFzfInput(["Add Item"]);
+async function matchItem(db, header) {
+  let choices = [
+    { type: "add", label: "Add Item" },
+    ...db.items.map(i => {
+      return { type: "item", item: i, label: `${db.itemLabel(i)}` };
+    }),
+  ];
 
-  rl.pause();
+  let selected = fzfChoice(choices, {
+    prompt: "Search for Item >",
+    header,
+  });
 
-  const info = spawnSync(
-    `/bin/cat ${FZF_FILE} | /usr/local/bin/fzf > ${FZF_OUT_FILE}`,
-    [],
-    {
-      shell: true,
-      stdio: "inherit",
-    }
-  );
-
-  rl.resume();
-
-  if (info.error) {
-    return;
-  }
-
-  let output = fs.readFileSync(FZF_OUT_FILE).toString().trim().split(":")[0];
-  if (output === "Add Item") {
+  if (selected.type === "add") {
     return await addItem(db);
   }
 
-  return db.getItem(output);
+  return selected.item;
 }
 
 function json(data) {
@@ -248,18 +291,17 @@ class Db {
     this.data.items.push(item);
   }
 
-  writeFzfInput(extras = []) {
-    let strings = [];
-    for (let item of this.data.items) {
-      let info = [];
-      for (let ing of item.ingredients) {
-        info.push(`${ing.quantity} ${ing.name}`);
-      }
+  get items() {
+    return this.data.items;
+  }
 
-      strings.push(`${item.name}: ${info.join(",")}`);
+  itemLabel(item) {
+    let info = [];
+    for (let ing of item.ingredients) {
+      info.push(`${ing.quantity} ${ing.name}`);
     }
 
-    fs.writeFileSync(FZF_FILE, strings.concat(extras).join("\n"));
+    return `${item.name} – Ingredients: ${info.join(",")}`;
   }
 
   replaceItem(oldItem, newItem) {
