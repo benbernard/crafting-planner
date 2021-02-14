@@ -34,6 +34,7 @@ async function main() {
         { type: "e", label: "Edit Item" },
         { type: "l", label: "Lookup Item" },
         { type: "p", label: "Print Database" },
+        { type: "q", label: "Quit" },
       ],
       {
         prompt: "Pick Action >",
@@ -57,14 +58,27 @@ const DISPATCH = {
   e: editItem,
   p: printData,
   l: lookupItem,
+  q: quit,
 };
+
+function quit() {
+  process.exit(0);
+}
 
 function fzfChoice(
   choices,
   { nameFn = d => d.label, header = "", prompt = "" } = {}
 ) {
   let input = [];
-  let args = ["--with-nth", 2, "--delimiter", "';'", "--info", "hidden"];
+  let args = [
+    "--with-nth",
+    2,
+    "--delimiter",
+    "';'",
+    "--info",
+    "hidden",
+    "--cycle",
+  ];
 
   if (header) {
     let headerWidth = header
@@ -118,7 +132,7 @@ async function editItem(db) {
   let item = await matchItem(db, { add: false });
 
   let newItem = await addItem(db, {
-    name: item.name,
+    ...item,
     ingredients: clone(item.ingredients),
     context: `Replacing item: ${item.name}`,
     save: false,
@@ -180,13 +194,15 @@ async function addItem(
     ingredients = [],
     save = true,
     context = "",
+    quantity = 1,
   } = {}
 ) {
   let choices = [
     { type: "n", label: "Set Name" },
     { type: "a", label: "Add Ingredient" },
+    { type: "q", label: `Set output quanity (Currently: ${quantity})` },
     { type: "s", label: "Commit Item" },
-    { type: "c", label: "Clear Ingredients" },
+    { type: "c", label: "Reset Ingredients" },
     // TODO: quit without save
   ];
 
@@ -210,6 +226,7 @@ async function addItem(
           ${header.join("\n")}
 
           Name: ${name}
+          Makes Quantity: ${quantity}
           Ingredients:
             ${indent(ingredientLabels.join("\n") || "None", 4)}
       `,
@@ -247,6 +264,7 @@ async function addItem(
       let item = {
         name,
         ingredients,
+        quantity,
       };
 
       if (save) {
@@ -257,6 +275,13 @@ async function addItem(
       return item;
     } else if (selected.type === "c") {
       ingredients = [];
+    } else if (selected.type === "q") {
+      let newQuantity = await ask(
+        `Enter quantity for ${name} (enter for ${quantity}):`
+      );
+      if (newQuantity) {
+        quantity = parseInt(newQuantity);
+      }
     } else {
       console.log(`No action found for: ${JSON.stringify(selected)}`);
     }
@@ -356,7 +381,7 @@ class Db {
       info.push(`${ing.quantity} ${ing.name}`);
     }
 
-    return `${item.name} – Ingredients: ${info.join(",")}`;
+    return `${item.name} – Ingredients: ${info.join(",")}`;
   }
 
   replaceItem(oldItem, newItem) {
