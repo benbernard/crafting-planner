@@ -34,6 +34,7 @@ async function main() {
         { type: "e", label: "Edit Item" },
         { type: "l", label: "Lookup Item" },
         { type: "p", label: "Print Database" },
+        { type: "m", label: "Make Ingredient List" },
         { type: "q", label: "Quit" },
       ],
       {
@@ -59,7 +60,96 @@ const DISPATCH = {
   p: printData,
   l: lookupItem,
   q: quit,
+  m: makeIngredientList,
 };
+
+async function makeIngredientList(db) {
+  let item = await matchItem(db, { header: "Find item to build", add: false });
+  let askedQuantity = parseInt(
+    await ask("Enter desired quantity (enter for 1)", "1")
+  );
+
+  let output = [];
+  let currentBuildSet = [[askedQuantity, item]];
+  let extras = {};
+
+  while (currentBuildSet.length > 0) {
+    let [desiredQuantity, item] = currentBuildSet.shift();
+    let batches = Math.ceil(desiredQuantity / item.quantity);
+    let produced = batches * item.quantity;
+
+    // console.log({
+    //   name: item.name,
+    //   quantity: item.quantity,
+    //   desiredQuantity,
+    //   batches,
+    //   produced,
+    // });
+
+    if (item.ingredients.length > 0) {
+      for (let ingredient of item.ingredients) {
+        let wanted = batches * ingredient.quantity;
+        let name = ingredient.name;
+        if (name in extras) {
+          let available = extras[name];
+          if (available > wanted) {
+            extras[name] -= wanted;
+            continue;
+          } else if (available < wanted) {
+            extras[name] -= available;
+            wanted -= available;
+          }
+        }
+        // console.log({ wanted, name });
+
+        currentBuildSet.push([wanted, db.getItem(name)]);
+      }
+    } else {
+      output.push([desiredQuantity, item.name]);
+    }
+
+    if (produced > desiredQuantity) {
+      extras[item.name] = produced - desiredQuantity;
+    }
+  }
+
+  let needs = shiftList(
+    output.map(d => `${d[0]} ${d[1]}`),
+    null,
+    2
+  );
+
+  let extra = shiftList(
+    mapObj(extras, (q, n) => `${q} ${n}`),
+    "None",
+    2
+  );
+
+  console.log(outdent`
+
+    Making ${askedQuantity} of ${item.name}
+
+    Needs:
+    ${needs}
+
+    Extras:
+    ${extra}
+  `);
+}
+
+function shiftList(arr, defaultStr, count) {
+  return indent(arr.join("\n") || defaultStr, count);
+}
+
+function mapObj(obj, fn) {
+  let output = [];
+  for (let key of Object.keys(obj)) {
+    let value = obj[key];
+    output.push(fn(value, key));
+  }
+
+  return output;
+}
 
 function quit() {
   process.exit(0);
@@ -172,8 +262,12 @@ async function lookupItem(db) {
   }
 }
 
-async function ask(str) {
-  return (await rl.questionAsync(q(str))).trim();
+async function ask(str, defaultAnswer) {
+  let result = await rl.questionAsync(q(str));
+  result = result.trim();
+
+  if (!result) return defaultAnswer;
+  return result;
 }
 
 async function askBoolean(str, defaultAnswer = false) {
@@ -228,7 +322,7 @@ async function addItem(
           Name: ${name}
           Makes Quantity: ${quantity}
           Ingredients:
-            ${indent(ingredientLabels.join("\n") || "None", 4)}
+            ${shiftList(ingredientLabels, "None", 4)}
       `,
     });
 
@@ -381,7 +475,7 @@ class Db {
       info.push(`${ing.quantity} ${ing.name}`);
     }
 
-    return `${item.name} – Ingredients: ${info.join(",")}`;
+    return `${item.name} – I: ${info.join(",")} – Q: ${item.quantity}`;
   }
 
   replaceItem(oldItem, newItem) {
