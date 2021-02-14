@@ -1,0 +1,13 @@
+{
+  "name": "planner",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "eslint": "^7.20.0",
+    "indent-string": "^4.0.0",
+    "md5": "^2.3.0",
+    "outdent": "^0.8.0",
+    "readline-promise": "^1.0.5"
+  }
+}
