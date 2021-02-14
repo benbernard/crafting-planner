@@ -11,6 +11,7 @@ const outdent = require("outdent");
 const util = require("util");
 const spawnSync = require("child_process").spawnSync;
 const indent = require("indent-string");
+const c = require("ansi-colors");
 
 const rl = readline.createInterface({
   terminal: true,
@@ -77,7 +78,6 @@ function fzfChoice(
 
     input = input.concat(headerLines);
     args.push("--header-lines", headerLines.length);
-    console.log(json(input));
   }
 
   if (prompt) {
@@ -110,15 +110,19 @@ function fzfChoice(
   return choices[parseInt(output)];
 }
 
+function clone(data) {
+  return JSON.parse(JSON.stringify(data));
+}
+
 async function editItem(db) {
-  let item = await matchItem(db);
+  let item = await matchItem(db, { add: false });
 
-  if (!item) {
-    console.log(`No item found`);
-    return;
-  }
-
-  let newItem = await addItemNoSave(db);
+  let newItem = await addItem(db, {
+    name: item.name,
+    ingredients: clone(item.ingredients),
+    context: `Replacing item: ${item.name}`,
+    save: false,
+  });
 
   let correct = await askBoolean(
     outdent`
@@ -168,47 +172,94 @@ async function askBoolean(str, defaultAnswer = false) {
   return await askBoolean(str, defaultAnswer);
 }
 
-async function addItemNoSave(db, name) {
-  if (name) {
-    let answer = await ask(`Enter name: (enter to keep: ${name})`);
-    if (answer) {
-      name = answer;
+async function addItem(
+  db,
+  {
+    sourceName = "",
+    name = "",
+    ingredients = [],
+    save = true,
+    context = "",
+  } = {}
+) {
+  let choices = [
+    { type: "n", label: "Set Name" },
+    { type: "a", label: "Add Ingredient" },
+    { type: "s", label: "Commit Item" },
+    { type: "c", label: "Clear Ingredients" },
+    // TODO: quit without save
+  ];
+
+  let error = "";
+
+  while (true) {
+    let ingredientLabels = ingredients.map(
+      ing => `${ing.quantity} ${ing.name}`
+    );
+
+    let header = [];
+
+    if (error) header.push(c.red(error));
+    if (context) header.push(context);
+
+    header.push(`Building Item${sourceName ? ` for ${sourceName}` : ""}:`);
+
+    let selected = fzfChoice(choices, {
+      prompt: "Action >",
+      header: outdent`
+          ${header.join("\n")}
+
+          Name: ${name}
+          Ingredients:
+            ${indent(ingredientLabels.join("\n") || "None", 4)}
+      `,
+    });
+
+    if (selected.type === "n") {
+      name = await ask(`Enter name:`);
+    } else if (selected.type === "a") {
+      let ingredientItem = await matchItem(db, {
+        header: `Find ingredient for ${name}`,
+        addOpts: { sourceName: name },
+      });
+
+      let quantity = await ask(
+        `Enter quantity (default: 1) ${ingredientItem.name} -> ${name}:`
+      );
+
+      if (quantity) {
+        quantity = parseInt(quantity);
+      } else {
+        quantity = 1;
+      }
+
+      ingredients.push({
+        name: ingredientItem.name,
+        quantity,
+      });
+    } else if (selected.type === "s") {
+      if (!name) {
+        error = "No name set!";
+        console.log("No Name set");
+        continue;
+      }
+
+      let item = {
+        name,
+        ingredients,
+      };
+
+      if (save) {
+        db.addItem(item);
+        db.write();
+      }
+
+      return item;
+    } else if (selected.type === "c") {
+      ingredients = [];
+    } else {
+      console.log(`No action found for: ${JSON.stringify(selected)}`);
     }
-  } else {
-    name = await ask(`Enter name:`);
-    if (!name) {
-      console.log("Bailing out of add item");
-      return;
-    }
-  }
-
-  let ingredients = await createIngredients(db, name);
-
-  let item = { name, ingredients };
-  return item;
-}
-
-async function addItem(db, name) {
-  let item = await addItemNoSave(db, name);
-
-  console.log(item);
-
-  let correct = await askBoolean(
-    outdent`
-      Creating:
-      ${indent(json(item), 2)}
-
-      Does this look correct? (Y/n)
-  `,
-    true
-  );
-
-  if (correct) {
-    db.addItem(item);
-    db.write();
-    return item;
-  } else {
-    console.log("Bailing!");
   }
 }
 
@@ -238,13 +289,17 @@ async function createIngredients(db, sourceName) {
   }
 }
 
-async function matchItem(db, header) {
-  let choices = [
-    { type: "add", label: "Add Item" },
+async function matchItem(db, { header = "", add = true, addOpts }) {
+  let choices = [];
+  if (add) {
+    choices.push({ type: "add", label: "Add Item" });
+  }
+
+  choices.push(
     ...db.items.map(i => {
       return { type: "item", item: i, label: `${db.itemLabel(i)}` };
-    }),
-  ];
+    })
+  );
 
   let selected = fzfChoice(choices, {
     prompt: "Search for Item >",
@@ -252,7 +307,7 @@ async function matchItem(db, header) {
   });
 
   if (selected.type === "add") {
-    return await addItem(db);
+    return await addItem(db, addOpts);
   }
 
   return selected.item;
