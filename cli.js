@@ -187,56 +187,6 @@ async function createIngredients(db, sourceName) {
   }
 }
 
-// async function createIngredients(db, sourceName) {
-//   let shouldContinue = await askBoolean("Has Ingredients? (y/N)");
-//   if (!shouldContinue) return [];
-//
-//   let ingredients = [];
-//   while (true) {
-//     let input = await ask(outdent`
-//       Specify Ingredient: QTY NAME
-//       (q to quit):
-//     `);
-//
-//     if (input === "q") return ingredients;
-//
-//     let splits = input.split(" ");
-//
-//     let quantity = splits[0];
-//     quantity = parseInt(quantity);
-//
-//     let nameGuess = splits.slice(1).join(" ");
-//     let item = db.matchItem(nameGuess);
-//     if (item) {
-//       let useItem = await askBoolean(
-//         `Use found item: ${item.name} (Y/n):`,
-//         true
-//       );
-//       if (!useItem) item = null;
-//     }
-//
-//     if (!item) {
-//       let shouldAdd = await askBoolean(`No item found, add item? (Y/n)`, true);
-//       if (shouldAdd) {
-//         item = await addItem(db, nameGuess);
-//         if (!item) continue;
-//       } else {
-//         continue;
-//       }
-//     }
-//
-//     let name = item.name;
-//
-//     let save = await askBoolean(
-//       `Got ${name} in ${quantity} amount for ${sourceName}, Correct? (Y/n):`,
-//       true
-//     );
-//     if (save) {
-//       ingredients.push({ name, quantity });
-//     }
-//   }
-// }
-
 async function matchItem(db) {
   db.writeFzfInput(["Add Item"]);
 
