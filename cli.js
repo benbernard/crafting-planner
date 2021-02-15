@@ -69,7 +69,7 @@ async function makeIngredientList(db) {
     await ask("Enter desired quantity (enter for 1)", "1")
   );
 
-  let output = [];
+  let output = {};
   let currentBuildSet = [[askedQuantity, item]];
   let extras = {};
 
@@ -105,7 +105,12 @@ async function makeIngredientList(db) {
         currentBuildSet.push([wanted, db.getItem(name)]);
       }
     } else {
-      output.push([desiredQuantity, item.name]);
+      1 + 1; // force formatting
+      if (item.name in output) {
+        output[item.name] += desiredQuantity;
+      } else {
+        output[item.name] = desiredQuantity;
+      }
     }
 
     if (produced > desiredQuantity) {
@@ -114,7 +119,7 @@ async function makeIngredientList(db) {
   }
 
   let needs = shiftList(
-    output.map(d => `${d[0]} ${d[1]}`),
+    mapObj(output, (q, n) => `${q} ${n}`),
     null,
     2
   );
@@ -302,6 +307,10 @@ async function addItem(
 
   let error = "";
 
+  if (!name) {
+    name = await ask(`Enter name for new item:`);
+  }
+
   while (true) {
     let ingredientLabels = ingredients.map(
       ing => `${ing.quantity} ${ing.name}`
@@ -317,17 +326,17 @@ async function addItem(
     let selected = fzfChoice(choices, {
       prompt: "Action >",
       header: outdent`
-          ${header.join("\n")}
+        ${header.join("\n")}
 
-          Name: ${name}
-          Makes Quantity: ${quantity}
-          Ingredients:
-            ${shiftList(ingredientLabels, "None", 4)}
+        Name: ${name}
+        Makes Quantity: ${quantity}
+        Ingredients:
+        ${shiftList(ingredientLabels, "None", 2)}
       `,
     });
 
     if (selected.type === "n") {
-      name = await ask(`Enter name:`);
+      name = await ask(`Enter name:`, name);
     } else if (selected.type === "a") {
       let ingredientItem = await matchItem(db, {
         header: `Find ingredient for ${name}`,
@@ -408,7 +417,7 @@ async function createIngredients(db, sourceName) {
   }
 }
 
-async function matchItem(db, { header = "", add = true, addOpts }) {
+async function matchItem(db, { header = "", add = true, addOpts } = {}) {
   let choices = [];
   if (add) {
     choices.push({ type: "add", label: "Add Item" });
