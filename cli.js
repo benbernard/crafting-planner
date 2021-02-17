@@ -70,13 +70,24 @@ async function makeIngredientList(db) {
   );
 
   let output = {};
-  let currentBuildSet = [[askedQuantity, item]];
+  let currentBuildSet = [{ quantity: askedQuantity, item: item, depth: 0 }];
   let extras = {};
+  let tiers = {};
 
   while (currentBuildSet.length > 0) {
-    let [desiredQuantity, item] = currentBuildSet.shift();
+    let { quantity: desiredQuantity, item, depth } = currentBuildSet.shift();
     let batches = Math.ceil(desiredQuantity / item.quantity);
     let produced = batches * item.quantity;
+
+    if (!(depth in tiers)) {
+      tiers[depth] = {};
+    }
+
+    if (!(item.name in tiers[depth])) {
+      tiers[depth][item.name] = 0;
+    }
+
+    tiers[depth][item.name] += desiredQuantity;
 
     // console.log({
     //   name: item.name,
@@ -102,7 +113,11 @@ async function makeIngredientList(db) {
         }
         // console.log({ wanted, name });
 
-        currentBuildSet.push([wanted, db.getItem(name)]);
+        currentBuildSet.push({
+          quantity: wanted,
+          item: db.getItem(name),
+          depth: depth + 1,
+        });
       }
     } else {
       1 + 1; // force formatting
@@ -139,7 +154,22 @@ async function makeIngredientList(db) {
 
     Extras:
     ${extra}
+
   `);
+
+  let tierKeys = Object.keys(tiers);
+  tierKeys.sort();
+
+  for (let depth of tierKeys) {
+    console.log(`Builds for tier ${depth}`);
+    console.log(
+      shiftList(
+        mapObj(tiers[depth], (q, n) => `${q} ${n}`),
+        2
+      )
+    );
+    console.log("");
+  }
 }
 
 function shiftList(arr, defaultStr, count) {
