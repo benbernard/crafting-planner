@@ -371,7 +371,12 @@ async function addItem(
       let ingredientItem = await matchItem(db, {
         header: `Find ingredient for ${name}`,
         addOpts: { sourceName: name },
+        extras: [{ type: 'q', label: "Quit, do not add ingredient" }],
       });
+
+      if (ingredientItem.type === 'q') {
+        continue;
+      }
 
       let quantity = await ask(
         `Enter quantity (default: 1) ${ingredientItem.name} -> ${name}:`
@@ -447,7 +452,7 @@ async function createIngredients(db, sourceName) {
   }
 }
 
-async function matchItem(db, { header = "", add = true, addOpts } = {}) {
+async function matchItem(db, { header = "", add = true, addOpts, extras = [] } = {}) {
   let choices = [];
   if (add) {
     choices.push({ type: "add", label: "Add Item" });
@@ -459,6 +464,12 @@ async function matchItem(db, { header = "", add = true, addOpts } = {}) {
     })
   );
 
+  if (extras.length > 0) {
+    for (let extra of extras) {
+      choices.push({ type: "extra", original: extra, label: extra.label })
+    }
+  }
+
   let selected = fzfChoice(choices, {
     prompt: "Search for Item >",
     header,
@@ -466,6 +477,10 @@ async function matchItem(db, { header = "", add = true, addOpts } = {}) {
 
   if (selected.type === "add") {
     return await addItem(db, addOpts);
+  }
+
+  if (selected.type === "extra") {
+    return selected.original;
   }
 
   return selected.item;
