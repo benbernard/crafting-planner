@@ -261,13 +261,25 @@ async function printBuildList(db, buildList, inventory) {
     2
   );
 
-  let extra = shiftList(
-    mapObj(extras, (q, n) => `${q} ${n}`),
-    "None",
-    2
+  let leftOvers = [];
+  for (let name of Object.keys(extras)) {
+    let quantity = extras[name];
+    if (quantity !== 0) leftOvers.push(`${quantity} ${name}`);
+  }
+
+  let extra = shiftList(leftOvers, "None", 2);
+
+  let buildListStr = shiftList(
+    mapObj(tiers[0], (q, n) => {
+      return `${q} ${n}}`;
+    })
   );
 
   console.log(outdent`
+
+    BUILDING:
+    ${buildListStr}
+
     Needs:
     ${needs}
 
