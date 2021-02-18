@@ -82,6 +82,7 @@ async function makeIngredientList(db) {
       { type: "i", label: "Add Inventory" },
       { type: "ir", label: "Remove Inventory" },
       { type: "r", label: "Reset All" },
+      { type: "o", label: "Print Total Outputs List" },
       { type: "q", label: "Quit" },
     ];
 
@@ -188,6 +189,17 @@ async function makeIngredientList(db) {
       delete buildConfig.inventory[selected.name];
       db.setBuildConfig(buildConfig);
       db.write();
+    } else if (selected.type === "o") {
+      if (buildConfig.targets.length === 0) {
+        console.error("Nothing to build!");
+        continue;
+      }
+      await printBuildList(
+        db,
+        buildConfig.targets,
+        buildConfig.inventory,
+        true
+      );
     } else if (selected.type === "l") {
       if (buildConfig.targets.length === 0) {
         console.error("Nothing to build!");
@@ -198,7 +210,7 @@ async function makeIngredientList(db) {
   }
 }
 
-async function printBuildList(db, buildList, inventory) {
+async function printBuildList(db, buildList, inventory, outputsOnly = false) {
   let currentBuildSet = clone(buildList);
   let extras = clone(inventory);
 
@@ -255,51 +267,97 @@ async function printBuildList(db, buildList, inventory) {
     }
   }
 
-  let needs = shiftList(
-    mapObj(output, (q, n) => `${q} ${n}`),
-    null,
-    2
-  );
+  if (outputsOnly) {
+    let fullOutputs = {};
 
-  let leftOvers = [];
-  for (let name of Object.keys(extras)) {
-    let quantity = extras[name];
-    if (quantity !== 0) leftOvers.push(`${quantity} ${name}`);
-  }
+    for (let tier of Object.keys(tiers)) {
+      for (let item of Object.keys(tiers[tier])) {
+        let quantity = tiers[tier][item];
+        if (item in fullOutputs) {
+          fullOutputs[item] += quantity;
+        } else {
+          fullOutputs[item] = quantity;
+        }
+      }
+    }
 
-  let extra = shiftList(leftOvers, "None", 2);
+    let tierNames = Object.keys(tiers);
+    tierNames.sort();
+    tierNames.reverse();
 
-  let buildListStr = shiftList(
-    mapObj(tiers[0], (q, n) => {
-      return `${q} ${n}}`;
-    })
-  );
+    let seen = {};
+    let itemStrs = [];
 
-  console.log(outdent`
+    for (let tier of tierNames) {
+      for (let item of Object.keys(tiers[tier])) {
+        if (item in seen) continue;
+        seen[item] = 1;
+        let extraInfo = "";
+        let quantity = fullOutputs[item];
+        if (quantity > 64) {
+          let stacks = Math.floor(quantity / 64);
+          let leftOver = quantity % 64;
 
-    BUILDING:
-    ${buildListStr}
+          extraInfo = ` ${stacks}x64 + ${leftOver}`;
+        }
 
-    Needs:
-    ${needs}
+        itemStrs.push(`${fullOutputs[item]} ${item}${extraInfo}`);
+      }
+    }
 
-    Extras:
-    ${extra}
+    console.log(outdent`
+
+       All Outputs:
+       ${shiftList(itemStrs, null, 2)}
+
+    `);
+  } else {
+    let needs = shiftList(
+      mapObj(output, (q, n) => `${q} ${n}`),
+      null,
+      2
+    );
+
+    let leftOvers = [];
+    for (let name of Object.keys(extras)) {
+      let quantity = extras[name];
+      if (quantity !== 0) leftOvers.push(`${quantity} ${name}`);
+    }
+
+    let extra = shiftList(leftOvers, "None", 2);
+
+    let buildListStr = shiftList(
+      mapObj(tiers[0], (q, n) => {
+        return `${q} ${n}}`;
+      })
+    );
+
+    console.log(outdent`
+
+      BUILDING:
+      ${buildListStr}
+
+      Needs:
+      ${needs}
+
+      Extras:
+      ${extra}
 
   `);
 
-  let tierKeys = Object.keys(tiers);
-  tierKeys.sort();
+    let tierKeys = Object.keys(tiers);
+    tierKeys.sort();
 
-  for (let depth of tierKeys) {
-    console.log(`Builds for tier ${depth}`);
-    console.log(
-      shiftList(
-        mapObj(tiers[depth], (q, n) => `${q} ${n}`),
-        2
-      )
-    );
-    console.log("");
+    for (let depth of tierKeys) {
+      console.log(`Builds for tier ${depth}`);
+      console.log(
+        shiftList(
+          mapObj(tiers[depth], (q, n) => `${q} ${n}`),
+          2
+        )
+      );
+      console.log("");
+    }
   }
 }
 
