@@ -64,22 +64,75 @@ const DISPATCH = {
 };
 
 async function makeIngredientList(db) {
-  let currentBuildSet = [];
+  let currentBuildSet = clone(db.data.buildList);
   while (true) {
-    let item = await matchItem(db, {
-      header: "Find item to build",
-      add: false,
+    let choices = [
+      { type: "a", label: "Add target item" },
+      { type: "d", label: "Remove target item" },
+      { type: "l", label: "Print Build List" },
+      { type: "q", label: "Quit" },
+    ];
+
+    let buildStrs = currentBuildSet.map(b => `${b.quantity} ${b.item.name}`);
+
+    let selected = fzfChoice(choices, {
+      header: outdent`
+        Building:
+        ${shiftList(buildStrs, "None", 2)}
+      `,
+      prompt: "Pick Action >",
     });
-    let askedQuantity = parseInt(
-      await ask("Enter desired quantity (enter for 1)", "1")
-    );
 
-    currentBuildSet.push({ quantity: askedQuantity, item: item, depth: 0 });
+    if (selected.type === "a") {
+      let item = await matchItem(db, {
+        header: "Find item to build",
+        add: false,
+      });
+      let askedQuantity = parseInt(
+        await ask("Enter desired quantity (enter for 1)", "1")
+      );
 
-    if (await askBoolean(`Done Entering Ingredients? (Y/n)`, true)) {
-      break;
+      currentBuildSet.push({ quantity: askedQuantity, item: item, depth: 0 });
+      db.setBuildList(currentBuildSet);
+      db.write();
+    } else if (selected.type === "q") {
+      return;
+    } else if (selected.type === "d") {
+      let items = currentBuildSet.map(b => {
+        return {
+          label: `${b.quantity} ${b.item.name}`,
+          type: "d",
+          name: b.item.name,
+        };
+      });
+
+      let deleteSelected = fzfChoice(
+        [...items, { type: "q", label: "Cancel" }],
+        {
+          prompt: "Delete Build Item >",
+        }
+      );
+
+      if (deleteSelected.type === "q") continue;
+
+      currentBuildSet = currentBuildSet.filter(
+        b => b.item.name !== deleteSelected.name
+      );
+
+      db.setBuildList(currentBuildSet);
+      db.write();
+    } else if (selected.type === "l") {
+      if (currentBuildSet.length === 0) {
+        console.error("Nothing to build!");
+        continue;
+      }
+      await printBuildList(db, currentBuildSet);
     }
   }
+}
+
+async function printBuildList(db, buildList) {
+  let currentBuildSet = clone(buildList);
 
   let output = {};
   let extras = {};
@@ -100,14 +153,6 @@ async function makeIngredientList(db) {
 
     tiers[depth][item.name] += desiredQuantity;
 
-    // console.log({
-    //   name: item.name,
-    //   quantity: item.quantity,
-    //   desiredQuantity,
-    //   batches,
-    //   produced,
-    // });
-
     if (item.ingredients.length > 0) {
       for (let ingredient of item.ingredients) {
         let wanted = batches * ingredient.quantity;
@@ -122,7 +167,6 @@ async function makeIngredientList(db) {
             wanted -= available;
           }
         }
-        // console.log({ wanted, name });
 
         currentBuildSet.push({
           quantity: wanted,
@@ -516,10 +560,16 @@ async function printData(db) {
 class Db {
   constructor() {
     this.data = JSON.parse(this.getDataContents());
+    if (!this.data.items) this.data.items = [];
+    if (!this.data.buildList) this.data.buildList = [];
   }
 
   stringData() {
     return json(this.data);
+  }
+
+  setBuildList(buildList) {
+    this.data.buildList = buildList;
   }
 
   write() {
