@@ -64,13 +64,24 @@ const DISPATCH = {
 };
 
 async function makeIngredientList(db) {
-  let item = await matchItem(db, { header: "Find item to build", add: false });
-  let askedQuantity = parseInt(
-    await ask("Enter desired quantity (enter for 1)", "1")
-  );
+  let currentBuildSet = [];
+  while (true) {
+    let item = await matchItem(db, {
+      header: "Find item to build",
+      add: false,
+    });
+    let askedQuantity = parseInt(
+      await ask("Enter desired quantity (enter for 1)", "1")
+    );
+
+    currentBuildSet.push({ quantity: askedQuantity, item: item, depth: 0 });
+
+    if (await askBoolean(`Done Entering Ingredients? (Y/n)`, true)) {
+      break;
+    }
+  }
 
   let output = {};
-  let currentBuildSet = [{ quantity: askedQuantity, item: item, depth: 0 }];
   let extras = {};
   let tiers = {};
 
@@ -146,9 +157,6 @@ async function makeIngredientList(db) {
   );
 
   console.log(outdent`
-
-    Making ${askedQuantity} of ${item.name}
-
     Needs:
     ${needs}
 
@@ -297,7 +305,7 @@ async function lookupItem(db) {
   }
 }
 
-async function ask(str, defaultAnswer) {
+async function ask(str, defaultAnswer = "") {
   let result = await rl.questionAsync(q(str));
   result = result.trim();
 
@@ -307,9 +315,9 @@ async function ask(str, defaultAnswer) {
 
 async function askBoolean(str, defaultAnswer = false) {
   let answer = await ask(str);
+  if (answer === "") return defaultAnswer;
   if (answer.toLowerCase() === "y") return true;
   if (answer.toLowerCase() === "n") return false;
-  if (answer === "") return defaultAnswer;
 
   console.log(`Did not recognize: ${answer}, trying again`);
   return await askBoolean(str, defaultAnswer);
@@ -327,11 +335,11 @@ async function addItem(
   } = {}
 ) {
   let choices = [
-    { type: "n", label: "Set Name" },
     { type: "a", label: "Add Ingredient" },
-    { type: "q", label: `Set output quanity (Currently: ${quantity})` },
     { type: "s", label: "Commit Item" },
-    { type: "c", label: "Reset Ingredients" },
+    { type: "q", label: `Set output quanity (Currently: ${quantity})` },
+    { type: "n", label: "Set Name" },
+    { type: "d", label: "Delete Ingredient(s)" },
     // TODO: quit without save
   ];
 
@@ -366,7 +374,7 @@ async function addItem(
     });
 
     if (selected.type === "n") {
-      name = await ask(`Enter name:`, name);
+      name = await ask(`Enter name (enter to keep ${name}):`, name);
     } else if (selected.type === "a") {
       let ingredientItem = await matchItem(db, {
         header: `Find ingredient for ${name}`,
@@ -420,6 +428,17 @@ async function addItem(
       if (newQuantity) {
         quantity = parseInt(newQuantity);
       }
+    } else if (selected.type === "d") {
+      let selected = fzfChoice(
+        ingredients.map(i => {
+          return { name: i.name, label: i.name };
+        }),
+        {
+          prompt: "Delete Ingredient >",
+        }
+      );
+
+      ingredients = ingredients.filter(i => i.name !== selected.name);
     } else {
       console.log(`No action found for: ${JSON.stringify(selected)}`);
     }
