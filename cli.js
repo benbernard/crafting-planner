@@ -141,7 +141,7 @@ async function makeIngredientList(db) {
 
       if (deleteSelected.type === "q") continue;
 
-      buildConfig.tarets = buildConfig.tarets.filter(
+      buildConfig.targets = buildConfig.targets.filter(
         b => b.item.name !== deleteSelected.name
       );
 
